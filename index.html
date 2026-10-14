@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voice Lamp — Day 1 Proof of Concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6F5F0;
+    --surface: #FFFFFF;
+    --ink: #24211C;
+    --muted: #726C60;
+    --line: #E3DFD3;
+    --lamp-glass: #D8D2C1;
+    --lamp-on: #E39B2E;
+    --lamp-glow: #FFD98A;
+    --listen: #386580;
+    --success: #4C7A57;
+    --error: #A6402E;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1A1815;
+      --surface: #242119;
+      --ink: #F1EEE6;
+      --muted: #A79F8E;
+      --line: #38332A;
+      --lamp-glass: #4A4438;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1A1815;
+    --surface: #242119;
+    --ink: #F1EEE6;
+    --muted: #A79F8E;
+    --line: #38332A;
+    --lamp-glass: #4A4438;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Source Sans 3', system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 20px calc(28px + env(safe-area-inset-bottom, 0px));
+    min-height: 100%;
+  }
+  .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; align-items: center; }
+
+  header { text-align: center; margin-bottom: 22px; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header p { color: var(--muted); font-size: 0.95rem; margin: 0; line-height: 1.5; }
+
+  .lamp-stage {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 36px 20px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .lamp svg { width: 128px; height: 148px; display: block; transition: filter 0.4s ease; }
+  .lamp .shade { fill: var(--lamp-glass); transition: fill 0.4s ease; }
+  .lamp .bulb { fill: var(--lamp-glass); transition: fill 0.4s ease, filter 0.4s ease; }
+  .lamp .base { fill: var(--muted); opacity: 0.5; }
+  .lamp.on .bulb { fill: var(--lamp-glow); filter: drop-shadow(0 0 22px var(--lamp-on)); }
+  .lamp.on .shade { fill: var(--lamp-on); }
+
+  .status {
+    min-height: 1.6em;
+    font-size: 1.05rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--muted);
+  }
+  .status.listening { color: var(--listen); }
+  .status.success { color: var(--success); }
+  .status.error { color: var(--error); }
+
+  .heard {
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-align: center;
+    min-height: 1.4em;
+  }
+  .heard strong { color: var(--ink); font-weight: 600; }
+
+  .mic-btn {
+    margin-top: 4px;
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    border: none;
+    background: var(--listen);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.2s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  }
+  .mic-btn:active { transform: scale(0.94); }
+  .mic-btn.listening { background: var(--error); animation: pulse 1.3s infinite; }
+  .mic-btn:focus-visible { outline: 3px solid var(--listen); outline-offset: 3px; }
+  .mic-btn svg { width: 34px; height: 34px; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 6px 18px rgba(0,0,0,0.15), 0 0 0 0 rgba(166,64,46,0.35); }
+    50% { box-shadow: 0 6px 18px rgba(0,0,0,0.15), 0 0 0 14px rgba(166,64,46,0); }
+  }
+  .mic-label { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+
+  .fallback {
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 52px;
+  }
+  .fallback:focus-visible { outline: 3px solid var(--listen); outline-offset: 2px; }
+
+  .log {
+    width: 100%;
+    margin-top: 26px;
+  }
+  .log h2 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  .log ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .log li {
+    font-size: 0.85rem;
+    color: var(--muted);
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .log li time { color: var(--muted); opacity: 0.75; margin-right: 8px; }
+  .log li b { color: var(--ink); }
+  .log .empty { color: var(--muted); opacity: 0.7; font-style: italic; }
+
+  .support-note {
+    margin-top: 20px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Voice Lamp — Day 1</h1>
+    <p>Say "light on" or "light off." This proof of concept checks whether your phone's browser can reliably hear and act on a spoken command — no app install, no hardware.</p>
+  </header>
+
+  <div class="lamp-stage">
+    <div class="lamp" id="lamp">
+      <svg viewBox="0 0 100 116" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path class="shade" d="M30 40 L70 40 L82 4 L18 4 Z" />
+        <circle class="bulb" cx="50" cy="55" r="14" />
+        <rect class="base" x="47" y="68" width="6" height="30" rx="2" />
+        <rect class="base" x="30" y="98" width="40" height="8" rx="3" />
+      </svg>
+    </div>
+
+    <div class="status" id="status">Tap the mic and say a command</div>
+    <div class="heard" id="heard"></div>
+
+    <button class="mic-btn" id="micBtn" aria-label="Start listening for a voice command">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+        <line x1="12" y1="19" x2="12" y2="23"></line>
+        <line x1="8" y1="23" x2="16" y2="23"></line>
+      </svg>
+    </button>
+    <div class="mic-label" id="micLabel">Tap to speak</div>
+
+    <button class="fallback" id="fallbackBtn">Or tap here to toggle the lamp directly</button>
+  </div>
+
+  <div class="log">
+    <h2>Command log</h2>
+    <ul id="logList">
+      <li class="empty">Nothing heard yet</li>
+    </ul>
+  </div>
+
+  <p class="support-note" id="supportNote"></p>
+
+</div>
+
+<script>
+  const lamp = document.getElementById('lamp');
+  const statusEl = document.getElementById('status');
+  const heardEl = document.getElementById('heard');
+  const micBtn = document.getElementById('micBtn');
+  const micLabel = document.getElementById('micLabel');
+  const fallbackBtn = document.getElementById('fallbackBtn');
+  const logList = document.getElementById('logList');
+  const supportNote = document.getElementById('supportNote');
+
+  let lampOn = false;
+  let logCount = 0;
+
+  function speak(text) {
+    try {
+      if (!('speechSynthesis' in window)) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* speech synthesis unavailable — visual feedback still works */ }
+  }
+
+  function setStatus(text, kind) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function addLog(text, ok) {
+    if (logCount === 0) logList.innerHTML = '';
+    const li = document.createElement('li');
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    li.innerHTML = '<time>' + time + '</time><b>' + text + '</b>';
+    logList.prepend(li);
+    logCount++;
+    while (logList.children.length > 6) logList.removeChild(logList.lastChild);
+  }
+
+  function setLamp(on, source) {
+    lampOn = on;
+    lamp.classList.toggle('on', on);
+    const msg = on ? 'Light turned on' : 'Light turned off';
+    setStatus(msg, 'success');
+    speak(msg);
+    addLog(msg + (source ? ' (' + source + ')' : ''));
+  }
+
+  fallbackBtn.addEventListener('click', () => setLamp(!lampOn, 'manual tap'));
+
+  // --- Speech recognition setup ---
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    supportNote.textContent = 'This browser doesn\'t support voice recognition. On a phone, open this page in Chrome for Android for the voice feature — the tap fallback below always works regardless.';
+    micBtn.disabled = true;
+    micBtn.style.opacity = '0.5';
+    micLabel.textContent = 'Voice unavailable here';
+  } else {
+    supportNote.textContent = 'First time: your browser will ask for microphone permission — allow it to test voice control.';
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-IN';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
+    let listening = false;
+
+    recognition.onstart = () => {
+      listening = true;
+      micBtn.classList.add('listening');
+      micLabel.textContent = 'Listening…';
+      setStatus('Listening…', 'listening');
+      heardEl.textContent = '';
+    };
+
+    recognition.onend = () => {
+      listening = false;
+      micBtn.classList.remove('listening');
+      micLabel.textContent = 'Tap to speak';
+    };
+
+    recognition.onerror = (e) => {
+      listening = false;
+      micBtn.classList.remove('listening');
+      micLabel.textContent = 'Tap to speak';
+      if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+        setStatus('Microphone permission denied', 'error');
+        addLog('Mic permission denied — enable it in browser site settings');
+      } else if (e.error === 'no-speech') {
+        setStatus('Didn\'t catch that — try again', 'error');
+      } else {
+        setStatus('Voice error: ' + e.error, 'error');
+        addLog('Recognition error: ' + e.error);
+      }
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.trim().toLowerCase();
+      heardEl.innerHTML = 'Heard: <strong>"' + transcript + '"</strong>';
+
+      if (transcript.includes('on')) {
+        setLamp(true, 'voice');
+      } else if (transcript.includes('off')) {
+        setLamp(false, 'voice');
+      } else if (transcript.includes('help')) {
+        setStatus('Help command recognized (SOS action comes in Month 2)', 'success');
+        addLog('Heard "help" — no action wired yet');
+      } else {
+        setStatus('Didn\'t recognize that command', 'error');
+        addLog('Unrecognized: "' + transcript + '"');
+      }
+    };
+
+    async function beginListening() {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+        } catch (err) {
+          setStatus('Microphone blocked: ' + (err.name || 'unknown'), 'error');
+          addLog('getUserMedia failed — ' + err.name + (err.message ? ': ' + err.message : ''));
+          return;
+        }
+      } else {
+        addLog('navigator.mediaDevices unavailable — trying recognition directly');
+      }
+      try {
+        recognition.start();
+      } catch (e) {
+        setStatus('Could not start listening: ' + (e.message || e.name || e), 'error');
+        addLog('recognition.start() failed — ' + (e.message || e.name || e));
+      }
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (listening) {
+        recognition.stop();
+      } else {
+        beginListening();
+      }
+    });
+  }
+</script>
+</body>
+</html>
