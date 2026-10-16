@@ -65,6 +65,23 @@
   h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
   header p { color: var(--muted); font-size: 0.95rem; margin: 0; line-height: 1.5; }
 
+  .lang-toggle { display: flex; gap: 8px; width: 100%; margin-bottom: 16px; }
+  .lang-btn {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    min-height: 44px;
+    font-family: inherit;
+  }
+  .lang-btn.active { background: var(--listen); color: #fff; border-color: var(--listen); }
+  .lang-btn:focus-visible { outline: 3px solid var(--listen); outline-offset: 2px; }
+
   .lamp-stage {
     width: 100%;
     background: var(--surface);
@@ -183,6 +200,11 @@
     <p>Say "light on" or "light off." This proof of concept checks whether your phone's browser can reliably hear and act on a spoken command — no app install, no hardware.</p>
   </header>
 
+  <div class="lang-toggle" role="group" aria-label="Choose recognition language">
+    <button type="button" class="lang-btn active" id="langEn" data-lang="en-IN">English</button>
+    <button type="button" class="lang-btn" id="langTe" data-lang="te-IN">తెలుగు</button>
+  </div>
+
   <div class="lamp-stage">
     <div class="lamp" id="lamp">
       <svg viewBox="0 0 100 116" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -284,6 +306,18 @@
     recognition.interimResults = false;
     recognition.maxAlternatives = 3;
     let listening = false;
+    let currentLang = 'en-IN';
+
+    const langButtons = document.querySelectorAll('.lang-btn');
+    langButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        langButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentLang = btn.getAttribute('data-lang');
+        recognition.lang = currentLang;
+        addLog('Language set to ' + btn.textContent);
+      });
+    });
 
     recognition.onstart = () => {
       listening = true;
@@ -318,11 +352,17 @@
       const transcript = event.results[0][0].transcript.trim().toLowerCase();
       heardEl.innerHTML = 'Heard: <strong>"' + transcript + '"</strong>';
 
-      if (transcript.includes('on')) {
+      // Telugu keywords below are a best-effort guess, not verified by a
+      // native speaker yet — correct these once you've tested real phrases.
+      const onWords = ['on', 'ఆన్', 'వెలిగించు'];
+      const offWords = ['off', 'ఆఫ్', 'ఆర్పు'];
+      const helpWords = ['help', 'సహాయం'];
+
+      if (onWords.some(w => transcript.includes(w))) {
         setLamp(true, 'voice');
-      } else if (transcript.includes('off')) {
+      } else if (offWords.some(w => transcript.includes(w))) {
         setLamp(false, 'voice');
-      } else if (transcript.includes('help')) {
+      } else if (helpWords.some(w => transcript.includes(w))) {
         setStatus('Help command recognized (SOS action comes in Month 2)', 'success');
         addLog('Heard "help" — no action wired yet');
       } else {
@@ -332,6 +372,9 @@
     };
 
     async function beginListening() {
+      // Preflight with getUserMedia first: this triggers Chrome's native
+      // permission prompt more reliably than SpeechRecognition alone, and
+      // gives us a real error name/message if it's blocked.
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
