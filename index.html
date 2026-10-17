@@ -185,6 +185,22 @@
   .log li b { color: var(--ink); }
   .log .empty { color: var(--muted); opacity: 0.7; font-style: italic; }
 
+  .gesture-section { width: 100%; margin-top: 22px; }
+  .gesture-section video {
+    display: none;
+    width: 100%;
+    border-radius: 14px;
+    margin-top: 10px;
+    transform: scaleX(-1);
+  }
+  .gesture-status {
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 8px;
+    min-height: 1.3em;
+  }
+
   .support-note {
     margin-top: 20px;
     font-size: 0.82rem;
@@ -198,8 +214,8 @@
 <div class="wrap">
 
   <header>
-    <h1>Voice Home — Day 3</h1>
-    <p>Say a device and an action — "fan on," "door open," "టీవీ ఆన్." Four simulated appliances, one mic, two languages.</p>
+    <h1>Voice Home — Day 6</h1>
+    <p>Say a device and an action — "fan on," "door open," "టీవీ ఆన్." Or use the camera below for gesture control.</p>
   </header>
 
   <div class="lang-toggle" role="group" aria-label="Choose recognition language">
@@ -222,6 +238,12 @@
       </svg>
     </button>
     <div class="mic-label" id="micLabel">Tap to speak</div>
+
+    <div class="gesture-section">
+      <button type="button" class="lang-btn" id="camBtn" style="width:100%;">Start camera (gesture control — Lamp only for now)</button>
+      <video id="cam" playsinline muted autoplay></video>
+      <div class="gesture-status" id="gestureStatus"></div>
+    </div>
   </div>
 
   <div class="log">
@@ -323,7 +345,7 @@
     let listening = false;
     let currentLang = 'en-IN';
 
-    const langButtons = document.querySelectorAll('.lang-btn');
+    const langButtons = document.querySelectorAll('.lang-btn[data-lang]');
     langButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         langButtons.forEach(b => b.classList.remove('active'));
@@ -414,6 +436,73 @@
         beginListening();
       }
     });
+  }
+</script>
+
+<script type="module">
+  // Gesture control — proof of concept, Lamp only for now.
+  // Uses MediaPipe's pretrained gesture recognizer (no training needed):
+  // Open_Palm -> lamp on, Closed_Fist -> lamp off.
+  const camBtn = document.getElementById('camBtn');
+  const video = document.getElementById('cam');
+  const gestureStatus = document.getElementById('gestureStatus');
+  let recognizer = null;
+  let running = false;
+  let lastGesture = null;
+  let lastActionTime = 0;
+
+  camBtn.addEventListener('click', async () => {
+    if (running) return;
+    camBtn.disabled = true;
+    camBtn.textContent = 'Loading gesture model…';
+    try {
+      const { GestureRecognizer, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+      recognizer = await GestureRecognizer.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task'
+        },
+        runningMode: 'VIDEO'
+      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      await video.play();
+      running = true;
+      camBtn.textContent = 'Camera active — show an open palm or a fist';
+      requestAnimationFrame(detectLoop);
+    } catch (err) {
+      gestureStatus.textContent = 'Could not start: ' + (err.message || err.name || err);
+      camBtn.disabled = false;
+      camBtn.textContent = 'Start camera (gesture control — Lamp only for now)';
+    }
+  });
+
+  function detectLoop() {
+    if (!running) return;
+    if (video.readyState >= 2) {
+      const result = recognizer.recognizeForVideo(video, performance.now());
+      if (result.gestures.length > 0) {
+        const g = result.gestures[0][0];
+        gestureStatus.textContent = 'Detected: ' + g.categoryName + ' (' + Math.round(g.score * 100) + '%)';
+        if (g.score > 0.6) handleGesture(g.categoryName);
+      } else {
+        gestureStatus.textContent = 'No hand detected';
+      }
+    }
+    requestAnimationFrame(detectLoop);
+  }
+
+  function handleGesture(name) {
+    const now = Date.now();
+    if (name === lastGesture && now - lastActionTime < 2000) return;
+    if (name === 'Open_Palm') {
+      setDevice('lamp', true, 'gesture');
+      lastGesture = name; lastActionTime = now;
+    } else if (name === 'Closed_Fist') {
+      setDevice('lamp', false, 'gesture');
+      lastGesture = name; lastActionTime = now;
+    }
   }
 </script>
 </body>
