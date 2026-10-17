@@ -163,6 +163,21 @@
   }
   .mic-label { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
 
+  .fallback {
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 52px;
+  }
+  .fallback:focus-visible { outline: 3px solid var(--listen); outline-offset: 2px; }
+
   .log {
     width: 100%;
     margin-top: 26px;
@@ -202,6 +217,53 @@
     min-height: 1.3em;
   }
 
+  .sos-section { width: 100%; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .sos-label { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .sos-row { display: flex; gap: 8px; }
+  .sos-input {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-family: inherit;
+    min-height: 44px;
+  }
+  .sos-save {
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--success);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    min-height: 44px;
+  }
+  .sos-saved-note { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
+  .sos-countdown {
+    display: none;
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--error);
+    color: #fff;
+    text-align: center;
+  }
+  .sos-countdown.active { display: block; }
+  .sos-countdown .big { font-size: 1.4rem; font-weight: 700; margin-bottom: 6px; }
+  .sos-cancel {
+    margin-top: 8px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: none;
+    background: #fff;
+    color: var(--error);
+    font-weight: 700;
+    min-height: 44px;
+  }
+
   .support-note {
     margin-top: 20px;
     font-size: 0.82rem;
@@ -215,8 +277,8 @@
 <div class="wrap">
 
   <header>
-    <h1>Voice Home — Day 7</h1>
-    <p>Voice: say a device and an action — "fan on," "door open." Gesture: pick a device (👍 Lamp, ✌️ Fan, ☝️ TV, 🤟 Door), then ✋ On or ✊ Off.</p>
+    <h1>Voice Home — Day 11</h1>
+    <p>Voice: say a device and an action — "fan on," "door open." Gesture: pick a device (👍 Lamp, ✌️ Fan, ☝️ TV, 🤟 Door), then ✋ On or ✊ Off. 👎 anytime calls for help.</p>
   </header>
 
   <div class="lang-toggle" role="group" aria-label="Choose recognition language">
@@ -244,6 +306,21 @@
       <button type="button" class="lang-btn" id="camBtn" style="width:100%;">Start camera (gesture control)</button>
       <video id="cam" playsinline muted autoplay></video>
       <div class="gesture-status" id="gestureStatus"></div>
+    </div>
+
+    <div class="sos-section">
+      <div class="sos-label">Emergency contact (for testing, use your own number)</div>
+      <div class="sos-row">
+        <input type="tel" class="sos-input" id="sosNumber" placeholder="+91XXXXXXXXXX">
+        <button type="button" class="sos-save" id="sosSave">Save</button>
+      </div>
+      <div class="sos-saved-note" id="sosSavedNote">Say "help," show ✊ (Thumb Down), or tap below to call.</div>
+      <button type="button" class="fallback" id="sosManualBtn" style="margin-top:10px;">Call for help now</button>
+
+      <div class="sos-countdown" id="sosCountdown">
+        <div class="big" id="sosCountdownText">Calling in 5…</div>
+        <button type="button" class="sos-cancel" id="sosCancelBtn">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -336,11 +413,76 @@
     while (logList.children.length > 6) logList.removeChild(logList.lastChild);
   }
 
+  // --- Emergency SOS ---
+  const sosNumberInput = document.getElementById('sosNumber');
+  const sosSaveBtn = document.getElementById('sosSave');
+  const sosSavedNote = document.getElementById('sosSavedNote');
+  const sosManualBtn = document.getElementById('sosManualBtn');
+  const sosCountdown = document.getElementById('sosCountdown');
+  const sosCountdownText = document.getElementById('sosCountdownText');
+  const sosCancelBtn = document.getElementById('sosCancelBtn');
+
+  try {
+    const saved = localStorage.getItem('sosNumber');
+    if (saved) {
+      sosNumberInput.value = saved;
+      sosSavedNote.textContent = 'Saved: ' + saved + '. Say "help," show 👎, or tap below.';
+    }
+  } catch (e) { /* storage unavailable — number just won't persist between visits */ }
+
+  sosSaveBtn.addEventListener('click', () => {
+    const num = sosNumberInput.value.trim();
+    if (!num) return;
+    try { localStorage.setItem('sosNumber', num); } catch (e) {}
+    sosSavedNote.textContent = 'Saved: ' + num + '. Say "help," show 👎, or tap below.';
+    addLog('Emergency number saved');
+  });
+
+  let sosCountdownTimer = null;
+  let sosCountdownValue = 5;
+
+  function triggerSOS(source) {
+    const num = sosNumberInput.value.trim();
+    if (!num) {
+      setStatus('No emergency number set yet', 'error');
+      addLog('SOS triggered but no number saved');
+      return;
+    }
+    if (sosCountdownTimer) return;
+    sosCountdownValue = 5;
+    sosCountdown.classList.add('active');
+    sosCountdownText.textContent = 'Calling ' + num + ' in ' + sosCountdownValue + '…';
+    addLog('SOS countdown started' + (source ? ' (' + source + ')' : ''));
+    sosCountdownTimer = setInterval(() => {
+      sosCountdownValue--;
+      if (sosCountdownValue <= 0) {
+        clearInterval(sosCountdownTimer);
+        sosCountdownTimer = null;
+        sosCountdown.classList.remove('active');
+        addLog('Calling ' + num + ' now');
+        window.location.href = 'tel:' + num;
+      } else {
+        sosCountdownText.textContent = 'Calling ' + num + ' in ' + sosCountdownValue + '…';
+      }
+    }, 1000);
+  }
+
+  sosCancelBtn.addEventListener('click', () => {
+    if (sosCountdownTimer) {
+      clearInterval(sosCountdownTimer);
+      sosCountdownTimer = null;
+    }
+    sosCountdown.classList.remove('active');
+    addLog('SOS cancelled');
+  });
+
+  sosManualBtn.addEventListener('click', () => triggerSOS('manual tap'));
+
   // --- Speech recognition setup ---
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    supportNote.textContent = 'This browser doesn\'t support voice recognition. On a phone, open this page in Chrome for Android for the voice feature.';
+    supportNote.textContent = 'This browser doesn\'t support voice recognition. On a phone, open this page in Chrome for Android for the voice feature — the tap fallback below always works regardless.';
     micBtn.disabled = true;
     micBtn.style.opacity = '0.5';
     micLabel.textContent = 'Voice unavailable here';
@@ -353,7 +495,7 @@
     let listening = false;
     let currentLang = 'en-IN';
 
-    const langButtons = document.querySelectorAll('.lang-btn[data-lang]');
+    const langButtons = document.querySelectorAll('.lang-btn');
     langButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         langButtons.forEach(b => b.classList.remove('active'));
@@ -397,6 +539,8 @@
       const transcript = event.results[0][0].transcript.trim().toLowerCase();
       heardEl.innerHTML = 'Heard: <strong>"' + transcript + '"</strong>';
 
+      // Telugu keywords below are a best-effort guess, not verified by a
+      // native speaker yet — correct these once you've tested real phrases.
       const onWords = ['on', 'ఆన్', 'వెలిగించు', 'వేసి', 'open', 'తెరువు'];
       const offWords = ['off', 'ఆఫ్', 'ఆర్పు', 'మూసి', 'ఆపేసి', 'ఆపు', 'close'];
       const helpWords = ['help', 'సహాయం'];
@@ -408,8 +552,7 @@
       } else if (offWords.some(w => transcript.includes(w))) {
         setDevice(matchedDevice.id, false, 'voice');
       } else if (helpWords.some(w => transcript.includes(w))) {
-        setStatus('Help command recognized (SOS action comes in Month 2)', 'success');
-        addLog('Heard "help" — no action wired yet');
+        triggerSOS('voice');
       } else {
         setStatus('Didn\'t recognize that command', 'error');
         addLog('Unrecognized: "' + transcript + '"');
@@ -417,6 +560,9 @@
     };
 
     async function beginListening() {
+      // Preflight with getUserMedia first: this triggers Chrome's native
+      // permission prompt more reliably than SpeechRecognition alone, and
+      // gives us a real error name/message if it's blocked.
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -432,102 +578,4 @@
       try {
         recognition.start();
       } catch (e) {
-        setStatus('Could not start listening: ' + (e.message || e.name || e), 'error');
-        addLog('recognition.start() failed — ' + (e.message || e.name || e));
-      }
-    }
-
-    micBtn.addEventListener('click', () => {
-      if (listening) {
-        recognition.stop();
-      } else {
-        beginListening();
-      }
-    });
-  }
-</script>
-
-<script type="module">
-  // Gesture control, all 4 devices. MediaPipe's pretrained gesture
-  // recognizer (no training needed): one gesture selects the device,
-  // then Open_Palm/Closed_Fist applies on/off to whichever is selected.
-  const camBtn = document.getElementById('camBtn');
-  const video = document.getElementById('cam');
-  const gestureStatus = document.getElementById('gestureStatus');
-  let recognizer = null;
-  let running = false;
-  let lastGesture = null;
-  let lastActionTime = 0;
-
-  camBtn.addEventListener('click', async () => {
-    if (running) return;
-    camBtn.disabled = true;
-    camBtn.textContent = 'Loading gesture model…';
-    try {
-      const { GestureRecognizer, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
-      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-      recognizer = await GestureRecognizer.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task'
-        },
-        runningMode: 'VIDEO'
-      });
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-      video.srcObject = stream;
-      video.style.display = 'block';
-      await video.play();
-      running = true;
-      camBtn.textContent = '👍 Lamp · ✌️ Fan · ☝️ TV · 🤟 Door — then ✋ On / ✊ Off';
-      requestAnimationFrame(detectLoop);
-    } catch (err) {
-      gestureStatus.textContent = 'Could not start: ' + (err.message || err.name || err);
-      camBtn.disabled = false;
-      camBtn.textContent = 'Start camera (gesture control)';
-    }
-  });
-
-  const SELECT_GESTURES = {
-    'Thumb_Up': 'lamp',
-    'Victory': 'fan',
-    'Pointing_Up': 'tv',
-    'ILoveYou': 'door'
-  };
-
-  function detectLoop() {
-    if (!running) return;
-    if (video.readyState >= 2) {
-      const result = recognizer.recognizeForVideo(video, performance.now());
-      const recentlyActed = Date.now() - lastActionTime < 900;
-      if (result.gestures.length > 0) {
-        const g = result.gestures[0][0];
-        if (!recentlyActed) {
-          gestureStatus.textContent = 'Detected: ' + g.categoryName + ' (' + Math.round(g.score * 100) + '%)';
-        }
-        if (g.score > 0.6) handleGesture(g.categoryName);
-      } else if (!recentlyActed) {
-        gestureStatus.textContent = 'No hand detected';
-      }
-    }
-    requestAnimationFrame(detectLoop);
-  }
-
-  function handleGesture(name) {
-    const now = Date.now();
-    if (name === lastGesture && now - lastActionTime < 1500) return;
-
-    if (SELECT_GESTURES[name]) {
-      selectDeviceById(SELECT_GESTURES[name]);
-      const d = DEVICES.find(x => x.id === SELECT_GESTURES[name]);
-      gestureStatus.textContent = 'Selected: ' + d.name + ' — now show ✋ or ✊';
-      lastGesture = name; lastActionTime = now;
-    } else if (name === 'Open_Palm') {
-      setDevice(selectedDevice, true, 'gesture');
-      lastGesture = name; lastActionTime = now;
-    } else if (name === 'Closed_Fist') {
-      setDevice(selectedDevice, false, 'gesture');
-      lastGesture = name; lastActionTime = now;
-    }
-  }
-</script>
-</body>
-</html>
+        setS
