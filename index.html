@@ -352,10 +352,8 @@
       const transcript = event.results[0][0].transcript.trim().toLowerCase();
       heardEl.innerHTML = 'Heard: <strong>"' + transcript + '"</strong>';
 
-      // Telugu keywords below are a best-effort guess, not verified by a
-      // native speaker yet — correct these once you've tested real phrases.
-      const onWords = ['on', 'ఆన్', 'వెలిగించు'];
-      const offWords = ['off', 'ఆఫ్', 'ఆర్పు'];
+      const onWords = ['on', 'ఆన్', 'వెలిగించు', 'వేసి'];
+      const offWords = ['off', 'ఆఫ్', 'ఆర్పు', 'మూసి', 'ఆపేసి', 'ఆపు'];
       const helpWords = ['help', 'సహాయం'];
 
       if (onWords.some(w => transcript.includes(w))) {
@@ -372,9 +370,6 @@
     };
 
     async function beginListening() {
-      // Preflight with getUserMedia first: this triggers Chrome's native
-      // permission prompt more reliably than SpeechRecognition alone, and
-      // gives us a real error name/message if it's blocked.
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
