@@ -94,12 +94,29 @@
     gap: 18px;
   }
 
-  .lamp svg { width: 128px; height: 148px; display: block; transition: filter 0.4s ease; }
-  .lamp .shade { fill: var(--lamp-glass); transition: fill 0.4s ease; }
-  .lamp .bulb { fill: var(--lamp-glass); transition: fill 0.4s ease, filter 0.4s ease; }
-  .lamp .base { fill: var(--muted); opacity: 0.5; }
-  .lamp.on .bulb { fill: var(--lamp-glow); filter: drop-shadow(0 0 22px var(--lamp-on)); }
-  .lamp.on .shade { fill: var(--lamp-on); }
+  .devices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+  .device-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    font-family: inherit;
+    cursor: pointer;
+    min-height: 92px;
+  }
+  .device-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--lamp-glass);
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+  }
+  .device-card.on .device-dot { background: var(--lamp-glow); box-shadow: 0 0 14px var(--lamp-on); }
+  .device-name { font-size: 0.9rem; font-weight: 600; color: var(--ink); }
+  .device-state { font-size: 0.78rem; color: var(--muted); }
+  .device-card.on .device-state { color: var(--success); font-weight: 600; }
 
   .status {
     min-height: 1.6em;
@@ -145,21 +162,6 @@
   }
   .mic-label { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
 
-  .fallback {
-    width: 100%;
-    margin-top: 16px;
-    padding: 14px 16px;
-    background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    color: var(--ink);
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    min-height: 52px;
-  }
-  .fallback:focus-visible { outline: 3px solid var(--listen); outline-offset: 2px; }
-
   .log {
     width: 100%;
     margin-top: 26px;
@@ -196,8 +198,8 @@
 <div class="wrap">
 
   <header>
-    <h1>Voice Lamp — Day 1</h1>
-    <p>Say "light on" or "light off." This proof of concept checks whether your phone's browser can reliably hear and act on a spoken command — no app install, no hardware.</p>
+    <h1>Voice Home — Day 3</h1>
+    <p>Say a device and an action — "fan on," "door open," "టీవీ ఆన్." Four simulated appliances, one mic, two languages.</p>
   </header>
 
   <div class="lang-toggle" role="group" aria-label="Choose recognition language">
@@ -206,14 +208,7 @@
   </div>
 
   <div class="lamp-stage">
-    <div class="lamp" id="lamp">
-      <svg viewBox="0 0 100 116" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path class="shade" d="M30 40 L70 40 L82 4 L18 4 Z" />
-        <circle class="bulb" cx="50" cy="55" r="14" />
-        <rect class="base" x="47" y="68" width="6" height="30" rx="2" />
-        <rect class="base" x="30" y="98" width="40" height="8" rx="3" />
-      </svg>
-    </div>
+    <div class="devices" id="devices"></div>
 
     <div class="status" id="status">Tap the mic and say a command</div>
     <div class="heard" id="heard"></div>
@@ -227,8 +222,6 @@
       </svg>
     </button>
     <div class="mic-label" id="micLabel">Tap to speak</div>
-
-    <button class="fallback" id="fallbackBtn">Or tap here to toggle the lamp directly</button>
   </div>
 
   <div class="log">
@@ -243,16 +236,49 @@
 </div>
 
 <script>
-  const lamp = document.getElementById('lamp');
+  const DEVICES = [
+    { id: 'lamp', name: 'Lamp', onLabel: 'On', offLabel: 'Off', words: ['light', 'lamp', 'దీపం', 'లైట్'] },
+    { id: 'fan', name: 'Fan', onLabel: 'On', offLabel: 'Off', words: ['fan', 'ఫ్యాన్'] },
+    { id: 'tv', name: 'TV', onLabel: 'On', offLabel: 'Off', words: ['tv', 'television', 'టీవీ'] },
+    { id: 'door', name: 'Door', onLabel: 'Open', offLabel: 'Closed', words: ['door', 'తలుపు'] }
+  ];
+  const deviceState = {};
+  DEVICES.forEach(d => deviceState[d.id] = false);
+  const devicesGrid = document.getElementById('devices');
+
+  function renderDevices() {
+    devicesGrid.innerHTML = '';
+    DEVICES.forEach(d => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'device-card' + (deviceState[d.id] ? ' on' : '');
+      const label = deviceState[d.id] ? d.onLabel : d.offLabel;
+      card.setAttribute('aria-label', d.name + ' ' + label);
+      card.innerHTML = '<span class="device-dot"></span><span class="device-name">' + d.name + '</span><span class="device-state">' + label + '</span>';
+      card.addEventListener('click', () => setDevice(d.id, !deviceState[d.id], 'manual tap'));
+      devicesGrid.appendChild(card);
+    });
+  }
+
+  function setDevice(id, on, source) {
+    deviceState[id] = on;
+    renderDevices();
+    const d = DEVICES.find(x => x.id === id);
+    const msg = d.name + ' ' + (on ? d.onLabel : d.offLabel);
+    setStatus(msg, 'success');
+    speak(msg);
+    addLog(msg + (source ? ' (' + source + ')' : ''));
+  }
+
+  renderDevices();
+
   const statusEl = document.getElementById('status');
   const heardEl = document.getElementById('heard');
   const micBtn = document.getElementById('micBtn');
   const micLabel = document.getElementById('micLabel');
-  const fallbackBtn = document.getElementById('fallbackBtn');
   const logList = document.getElementById('logList');
   const supportNote = document.getElementById('supportNote');
 
-  let lampOn = false;
   let logCount = 0;
 
   function speak(text) {
@@ -280,22 +306,11 @@
     while (logList.children.length > 6) logList.removeChild(logList.lastChild);
   }
 
-  function setLamp(on, source) {
-    lampOn = on;
-    lamp.classList.toggle('on', on);
-    const msg = on ? 'Light turned on' : 'Light turned off';
-    setStatus(msg, 'success');
-    speak(msg);
-    addLog(msg + (source ? ' (' + source + ')' : ''));
-  }
-
-  fallbackBtn.addEventListener('click', () => setLamp(!lampOn, 'manual tap'));
-
   // --- Speech recognition setup ---
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    supportNote.textContent = 'This browser doesn\'t support voice recognition. On a phone, open this page in Chrome for Android for the voice feature — the tap fallback below always works regardless.';
+    supportNote.textContent = 'This browser doesn\'t support voice recognition. On a phone, open this page in Chrome for Android for the voice feature.';
     micBtn.disabled = true;
     micBtn.style.opacity = '0.5';
     micLabel.textContent = 'Voice unavailable here';
@@ -352,14 +367,16 @@
       const transcript = event.results[0][0].transcript.trim().toLowerCase();
       heardEl.innerHTML = 'Heard: <strong>"' + transcript + '"</strong>';
 
-      const onWords = ['on', 'ఆన్', 'వెలిగించు', 'వేసి'];
-      const offWords = ['off', 'ఆఫ్', 'ఆర్పు', 'మూసి', 'ఆపేసి', 'ఆపు'];
+      const onWords = ['on', 'ఆన్', 'వెలిగించు', 'వేసి', 'open', 'తెరువు'];
+      const offWords = ['off', 'ఆఫ్', 'ఆర్పు', 'మూసి', 'ఆపేసి', 'ఆపు', 'close'];
       const helpWords = ['help', 'సహాయం'];
 
+      const matchedDevice = DEVICES.find(d => d.words.some(w => transcript.includes(w))) || DEVICES[0];
+
       if (onWords.some(w => transcript.includes(w))) {
-        setLamp(true, 'voice');
+        setDevice(matchedDevice.id, true, 'voice');
       } else if (offWords.some(w => transcript.includes(w))) {
-        setLamp(false, 'voice');
+        setDevice(matchedDevice.id, false, 'voice');
       } else if (helpWords.some(w => transcript.includes(w))) {
         setStatus('Help command recognized (SOS action comes in Month 2)', 'success');
         addLog('Heard "help" — no action wired yet');
