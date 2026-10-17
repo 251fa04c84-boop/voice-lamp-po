@@ -117,6 +117,7 @@
   .device-name { font-size: 0.9rem; font-weight: 600; color: var(--ink); }
   .device-state { font-size: 0.78rem; color: var(--muted); }
   .device-card.on .device-state { color: var(--success); font-weight: 600; }
+  .device-card.selected { outline: 2px solid var(--listen); outline-offset: -2px; }
 
   .status {
     min-height: 1.6em;
@@ -214,8 +215,8 @@
 <div class="wrap">
 
   <header>
-    <h1>Voice Home — Day 6</h1>
-    <p>Say a device and an action — "fan on," "door open," "టీవీ ఆన్." Or use the camera below for gesture control.</p>
+    <h1>Voice Home — Day 7</h1>
+    <p>Voice: say a device and an action — "fan on," "door open." Gesture: pick a device (👍 Lamp, ✌️ Fan, ☝️ TV, 🤟 Door), then ✋ On or ✊ Off.</p>
   </header>
 
   <div class="lang-toggle" role="group" aria-label="Choose recognition language">
@@ -240,7 +241,7 @@
     <div class="mic-label" id="micLabel">Tap to speak</div>
 
     <div class="gesture-section">
-      <button type="button" class="lang-btn" id="camBtn" style="width:100%;">Start camera (gesture control — Lamp only for now)</button>
+      <button type="button" class="lang-btn" id="camBtn" style="width:100%;">Start camera (gesture control)</button>
       <video id="cam" playsinline muted autoplay></video>
       <div class="gesture-status" id="gestureStatus"></div>
     </div>
@@ -277,9 +278,16 @@
       const label = deviceState[d.id] ? d.onLabel : d.offLabel;
       card.setAttribute('aria-label', d.name + ' ' + label);
       card.innerHTML = '<span class="device-dot"></span><span class="device-name">' + d.name + '</span><span class="device-state">' + label + '</span>';
+      if (d.id === selectedDevice) card.classList.add('selected');
       card.addEventListener('click', () => setDevice(d.id, !deviceState[d.id], 'manual tap'));
       devicesGrid.appendChild(card);
     });
+  }
+
+  let selectedDevice = 'lamp';
+  function selectDeviceById(id) {
+    selectedDevice = id;
+    renderDevices();
   }
 
   function setDevice(id, on, source) {
@@ -440,9 +448,9 @@
 </script>
 
 <script type="module">
-  // Gesture control — proof of concept, Lamp only for now.
-  // Uses MediaPipe's pretrained gesture recognizer (no training needed):
-  // Open_Palm -> lamp on, Closed_Fist -> lamp off.
+  // Gesture control, all 4 devices. MediaPipe's pretrained gesture
+  // recognizer (no training needed): one gesture selects the device,
+  // then Open_Palm/Closed_Fist applies on/off to whichever is selected.
   const camBtn = document.getElementById('camBtn');
   const video = document.getElementById('cam');
   const gestureStatus = document.getElementById('gestureStatus');
@@ -469,24 +477,34 @@
       video.style.display = 'block';
       await video.play();
       running = true;
-      camBtn.textContent = 'Camera active — show an open palm or a fist';
+      camBtn.textContent = '👍 Lamp · ✌️ Fan · ☝️ TV · 🤟 Door — then ✋ On / ✊ Off';
       requestAnimationFrame(detectLoop);
     } catch (err) {
       gestureStatus.textContent = 'Could not start: ' + (err.message || err.name || err);
       camBtn.disabled = false;
-      camBtn.textContent = 'Start camera (gesture control — Lamp only for now)';
+      camBtn.textContent = 'Start camera (gesture control)';
     }
   });
+
+  const SELECT_GESTURES = {
+    'Thumb_Up': 'lamp',
+    'Victory': 'fan',
+    'Pointing_Up': 'tv',
+    'ILoveYou': 'door'
+  };
 
   function detectLoop() {
     if (!running) return;
     if (video.readyState >= 2) {
       const result = recognizer.recognizeForVideo(video, performance.now());
+      const recentlyActed = Date.now() - lastActionTime < 900;
       if (result.gestures.length > 0) {
         const g = result.gestures[0][0];
-        gestureStatus.textContent = 'Detected: ' + g.categoryName + ' (' + Math.round(g.score * 100) + '%)';
+        if (!recentlyActed) {
+          gestureStatus.textContent = 'Detected: ' + g.categoryName + ' (' + Math.round(g.score * 100) + '%)';
+        }
         if (g.score > 0.6) handleGesture(g.categoryName);
-      } else {
+      } else if (!recentlyActed) {
         gestureStatus.textContent = 'No hand detected';
       }
     }
@@ -495,12 +513,18 @@
 
   function handleGesture(name) {
     const now = Date.now();
-    if (name === lastGesture && now - lastActionTime < 2000) return;
-    if (name === 'Open_Palm') {
-      setDevice('lamp', true, 'gesture');
+    if (name === lastGesture && now - lastActionTime < 1500) return;
+
+    if (SELECT_GESTURES[name]) {
+      selectDeviceById(SELECT_GESTURES[name]);
+      const d = DEVICES.find(x => x.id === SELECT_GESTURES[name]);
+      gestureStatus.textContent = 'Selected: ' + d.name + ' — now show ✋ or ✊';
+      lastGesture = name; lastActionTime = now;
+    } else if (name === 'Open_Palm') {
+      setDevice(selectedDevice, true, 'gesture');
       lastGesture = name; lastActionTime = now;
     } else if (name === 'Closed_Fist') {
-      setDevice('lamp', false, 'gesture');
+      setDevice(selectedDevice, false, 'gesture');
       lastGesture = name; lastActionTime = now;
     }
   }
