@@ -578,4 +578,105 @@
       try {
         recognition.start();
       } catch (e) {
-        setS
+        setStatus('Could not start listening: ' + (e.message || e.name || e), 'error');
+        addLog('recognition.start() failed — ' + (e.message || e.name || e));
+      }
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (listening) {
+        recognition.stop();
+      } else {
+        beginListening();
+      }
+    });
+  }
+</script>
+
+<script type="module">
+  // Gesture control, all 4 devices. MediaPipe's pretrained gesture
+  // recognizer (no training needed): one gesture selects the device,
+  // then Open_Palm/Closed_Fist applies on/off to whichever is selected.
+  const camBtn = document.getElementById('camBtn');
+  const video = document.getElementById('cam');
+  const gestureStatus = document.getElementById('gestureStatus');
+  let recognizer = null;
+  let running = false;
+  let lastGesture = null;
+  let lastActionTime = 0;
+
+  camBtn.addEventListener('click', async () => {
+    if (running) return;
+    camBtn.disabled = true;
+    camBtn.textContent = 'Loading gesture model…';
+    try {
+      const { GestureRecognizer, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+      recognizer = await GestureRecognizer.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task'
+        },
+        runningMode: 'VIDEO'
+      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      await video.play();
+      running = true;
+      camBtn.textContent = '👍 Lamp · ✌️ Fan · ☝️ TV · 🤟 Door — then ✋ On / ✊ Off';
+      requestAnimationFrame(detectLoop);
+    } catch (err) {
+      gestureStatus.textContent = 'Could not start: ' + (err.message || err.name || err);
+      camBtn.disabled = false;
+      camBtn.textContent = 'Start camera (gesture control)';
+    }
+  });
+
+  const SELECT_GESTURES = {
+    'Thumb_Up': 'lamp',
+    'Victory': 'fan',
+    'Pointing_Up': 'tv',
+    'ILoveYou': 'door'
+  };
+
+  function detectLoop() {
+    if (!running) return;
+    if (video.readyState >= 2) {
+      const result = recognizer.recognizeForVideo(video, performance.now());
+      const recentlyActed = Date.now() - lastActionTime < 900;
+      if (result.gestures.length > 0) {
+        const g = result.gestures[0][0];
+        if (!recentlyActed) {
+          gestureStatus.textContent = 'Detected: ' + g.categoryName + ' (' + Math.round(g.score * 100) + '%)';
+        }
+        if (g.score > 0.6) handleGesture(g.categoryName);
+      } else if (!recentlyActed) {
+        gestureStatus.textContent = 'No hand detected';
+      }
+    }
+    requestAnimationFrame(detectLoop);
+  }
+
+  function handleGesture(name) {
+    const now = Date.now();
+    if (name === lastGesture && now - lastActionTime < 1500) return; // debounce repeats
+
+    if (SELECT_GESTURES[name]) {
+      selectDeviceById(SELECT_GESTURES[name]);
+      const d = DEVICES.find(x => x.id === SELECT_GESTURES[name]);
+      gestureStatus.textContent = 'Selected: ' + d.name + ' — now show ✋ or ✊';
+      lastGesture = name; lastActionTime = now;
+    } else if (name === 'Open_Palm') {
+      setDevice(selectedDevice, true, 'gesture');
+      lastGesture = name; lastActionTime = now;
+    } else if (name === 'Closed_Fist') {
+      setDevice(selectedDevice, false, 'gesture');
+      lastGesture = name; lastActionTime = now;
+    } else if (name === 'Thumb_Down') {
+      triggerSOS('gesture');
+      lastGesture = name; lastActionTime = now;
+    }
+  }
+</script>
+</body>
+</html>
